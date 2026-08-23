@@ -1,0 +1,23 @@
+{
+  // Nothing here compiles anything: Node strips the types itself, so this file
+  // is what your editor reads, and what `tsc --noEmit` reads if you add the
+  // compiler yourself (see README.md). `erasableSyntaxOnly` is the load-bearing
+  // one -- it refuses the TypeScript that Node cannot strip (enums, namespaces,
+  // parameter properties), so the editor rejects them before Node does.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

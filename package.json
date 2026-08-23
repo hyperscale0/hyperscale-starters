@@ -1,0 +1,27 @@
+{
+  "name": "hyperscale-starters",
+  "version": "1.0.0-alpha.1",
+  "private": true,
+  "license": "MIT",
+  "description": "Dependency-free example apps that call a Hyperscale Product API over plain HTTP, one per language.",
+  "scripts": {
+    "check": "bun run check:typescript-node && bun run check:python && bun run check:go",
+    "check:typescript-node": "node --test typescript-node/test/*.test.ts",
+    "check:python": "python3 -m unittest discover --start-directory python --top-level-directory python",
+    "check:go": "cd go && go vet ./... && go build -o /dev/null ./... && go test ./..."
+  },
+  "author": "Hyperscale LLC",
+  "contributors": [
+    "Meshael AlBakaawi",
+    "Amir Ayub",
+    "Sara AlBakaawi"
+  ],
+  "homepage": "https://github.com/hyperscale0/hyperscale-starters#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyperscale0/hyperscale-starters.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hyperscale0/hyperscale-starters/issues"
+  }
+}

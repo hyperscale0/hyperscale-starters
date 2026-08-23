@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Public repository: GitHub-hosted runners only. A fork's pull request must
+# never execute on our own hardware.
+#
+# One job per starter rather than one matrix over the three: each language
+# needs its own setup action with its own pinned version, and `uses:` takes no
+# matrix expression, so a matrix would mean three `if:`-guarded setup steps in
+# every job. Three ten-line jobs read better and a red check names the starter.
+# Every job runs that starter's smoke test against the mock server the suite
+# starts itself, so no job needs a key, a secret, or the network.
+jobs:
+  typescript-node:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: typescript-node
+    steps:
+      - uses: actions/checkout@v7
+
+      # 22.18 is the floor: it is where Node started stripping TypeScript
+      # types without a flag, which is the whole build step this starter has.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Smoke test against the mock server
+        run: node --test test/*.test.ts
+
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Compile every module
+        run: python3 -m compileall -q .
+
+      - name: Smoke test against the mock server
+        run: python3 -m unittest discover --start-directory . --top-level-directory .
+
+  go:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: go
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.25"
+
+      # -o /dev/null because a bare `go build` in a main package writes an
+      # executable named after the directory into the checkout.
+      - name: Vet and build
+        run: |
+          go vet ./...
+          go build -o /dev/null ./...
+
+      - name: Smoke test against the mock server
+        run: go test ./...

@@ -1,0 +1,12 @@
+# The key lives in .env, which never enters version control. .env.example is
+# the tracked template and carries no secret.
+.env
+!.env.example
+
+# Per-starter build and cache output. A bare `go build` inside go/ writes an
+# executable named after the directory, which is why that one path is here.
+node_modules/
+dist/
+__pycache__/
+*.pyc
+go/go
