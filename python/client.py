@@ -5,6 +5,10 @@ Product API key, and ``X-Hyperscale-Environment`` picks which plane of that key
 is being addressed. Sandbox keys and live keys are never interchangeable, so
 the header is not a hint: it is half the credential. HTTP header names are
 case-insensitive; these are the canonical spellings.
+
+The key goes to HYPERSCALE_BASE_URL and nowhere else: this starter refuses
+redirects rather than following them, the same as the Go and TypeScript
+starters. The endpoint is fixed and read-only, so there is no hop worth taking.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Mapping, Optional, Sequence
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 #: The public origin. Override it with HYPERSCALE_BASE_URL.
 DEFAULT_BASE_URL = "https://hyperscale0.ai"
@@ -22,6 +26,25 @@ DEFAULT_BASE_URL = "https://hyperscale0.ai"
 ENVIRONMENTS = ("sandbox", "live")
 
 TIMEOUT_SECONDS = 30
+
+
+class _RefuseRedirects(HTTPRedirectHandler):
+    """Stops urllib from carrying the API key to whatever host a 3xx names.
+
+    ``HTTPRedirectHandler.redirect_request`` copies every request header onto
+    the new request except content-length and content-type, so the default
+    behavior hands ``Authorization: Bearer <key>`` to any origin the response
+    points at. Returning ``None`` declines the redirect, and the 3xx comes back
+    as an ``HTTPError`` the caller turns into a message. This endpoint is fixed
+    and read-only, so there is no move worth following.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+#: One opener, built once, so every call in this module refuses redirects.
+_OPENER = build_opener(_RefuseRedirects())
 
 
 class ProductApiError(Exception):
@@ -88,9 +111,17 @@ def fetch_product_descriptor(config: Config) -> ProductDescriptor:
     )
 
     try:
-        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        with _OPENER.open(request, timeout=TIMEOUT_SECONDS) as response:
             body = response.read().decode("utf-8")
     except HTTPError as error:
+        if 300 <= error.code < 400:
+            # Nothing reads this body, so the socket has to be closed by hand.
+            error.close()
+            raise ProductApiError(
+                "GET /v1/llms.txt was redirected, so the key was not sent on. "
+                "Set HYPERSCALE_BASE_URL to the origin the API answers on; "
+                "the usual cause is http:// where it serves https://."
+            ) from None
         # HTTPError is a response, so the body carries the API's error envelope.
         failed = error.read().decode("utf-8", errors="replace")
         detail = _error_envelope(failed) or failed.strip()

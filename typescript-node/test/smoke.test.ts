@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 
 import {
@@ -104,4 +106,54 @@ test("a descriptor whose count disagrees with its lines is refused", () => {
   assert.throws(() => parseProductDescriptor(short), {
     message: /declares 3 operations but 2 parsed/,
   });
+});
+
+test("a redirect does not carry the key to another origin", async () => {
+  const elsewhere = await startMockServer({ apiKey: API_KEY });
+  const redirector = createServer((request, response) => {
+    response.writeHead(302, {
+      location: `${elsewhere.baseUrl}${request.url ?? ""}`,
+    });
+    response.end();
+  });
+  await new Promise<void>((resolve) => {
+    redirector.listen(0, "127.0.0.1", resolve);
+  });
+  const { port } = redirector.address() as AddressInfo;
+
+  try {
+    // The destination is live and does record what reaches it, so a log that
+    // stays at one below means the request was never made, not that the test
+    // looked in the wrong place.
+    await fetchProductDescriptor(
+      readConfig({
+        HYPERSCALE_API_KEY: API_KEY,
+        HYPERSCALE_BASE_URL: elsewhere.baseUrl,
+      }),
+    );
+    assert.equal(elsewhere.received.length, 1);
+
+    await assert.rejects(
+      fetchProductDescriptor(
+        readConfig({
+          HYPERSCALE_API_KEY: API_KEY,
+          HYPERSCALE_BASE_URL: `http://127.0.0.1:${port}`,
+        }),
+      ),
+      (error: unknown) =>
+        error instanceof ProductApiError &&
+        error.message.includes("redirected") &&
+        error.message.includes("HYPERSCALE_BASE_URL"),
+    );
+    assert.equal(
+      elsewhere.received.length,
+      1,
+      "the key was carried to another origin",
+    );
+  } finally {
+    await new Promise<void>((resolve) => {
+      redirector.close(() => resolve());
+    });
+    await elsewhere.stop();
+  }
 });

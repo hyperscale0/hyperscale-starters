@@ -6,10 +6,22 @@
  * key is being addressed. Sandbox keys and live keys are never
  * interchangeable, so the header is not a hint: it is half the credential.
  * HTTP header names are case-insensitive; these are the canonical spellings.
+ *
+ * The key goes to HYPERSCALE_BASE_URL and nowhere else: this starter refuses
+ * redirects rather than following them, the same as the Go and Python
+ * starters. The endpoint is fixed and read-only, so there is no hop worth
+ * taking.
  */
 
 /** The public origin. Override it with HYPERSCALE_BASE_URL. */
 const DEFAULT_BASE_URL = "https://hyperscale0.ai";
+
+/**
+ * The whole deadline for the call, connect through body. A host that sends
+ * headers and then stops streaming would otherwise leave the starter waiting
+ * with nothing on screen and no error.
+ */
+const TIMEOUT_MS = 30_000;
 
 export type Environment = "sandbox" | "live";
 
@@ -69,6 +81,10 @@ export async function fetchProductDescriptor(
   const url = `${config.baseUrl}/v1/llms.txt`;
 
   let response: Response;
+  let body: string;
+  // The body read is inside the try because a stream that dies mid-body is
+  // the same class of failure as a connection that never opened, and both owe
+  // the reader a message rather than a stack.
   try {
     response = await fetch(url, {
       headers: {
@@ -76,13 +92,27 @@ export async function fetchProductDescriptor(
         authorization: `Bearer ${config.apiKey}`,
         "x-hyperscale-environment": config.environment,
       },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      // The key belongs to one origin, so a 3xx is refused rather than
+      // followed. Node happens to strip Authorization on a cross-origin hop
+      // on its own, but a starter is copy-paste source: whoever swaps in
+      // another HTTP client inherits the header policy, not this one. Same
+      // setting the generated JavaScript SDK uses.
+      redirect: "error",
     });
+    body = await response.text();
   } catch (cause) {
+    if (isUnexpectedRedirect(cause)) {
+      throw new ProductApiError(
+        "GET /v1/llms.txt was redirected, so the key was not sent on. " +
+          "Set HYPERSCALE_BASE_URL to the origin the API answers on; " +
+          "the usual cause is http:// where it serves https://.",
+      );
+    }
     const reason = cause instanceof Error ? cause.message : String(cause);
     throw new ProductApiError(`Could not reach ${url}: ${reason}`);
   }
 
-  const body = await response.text();
   if (!response.ok) {
     const detail = errorEnvelope(body) ?? body.trim();
     throw new ProductApiError(
@@ -90,6 +120,25 @@ export async function fetchProductDescriptor(
     );
   }
   return parseProductDescriptor(body);
+}
+
+/**
+ * Node reports a refused redirect as `TypeError: fetch failed` wrapping
+ * `Error: unexpected redirect`.
+ *
+ * These strings are undici's, not a standard, so this match is COSMETIC and
+ * never load-bearing: `redirect: "error"` refuses the hop whatever the
+ * runtime calls it, and a reworded error just falls through to the generic
+ * "Could not reach" line below. Losing the specific message is the right
+ * direction to fail in, so this needs no upkeep.
+ */
+function isUnexpectedRedirect(cause: unknown): boolean {
+  return (
+    cause instanceof TypeError &&
+    cause.message === "fetch failed" &&
+    cause.cause instanceof Error &&
+    cause.cause.message === "unexpected redirect"
+  );
 }
 
 const titleLine = /^# (.+)$/m;

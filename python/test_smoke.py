@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from client import (
     ProductApiError,
@@ -11,6 +13,43 @@ from client import (
 from mock_server import SAMPLE_DESCRIPTOR, MockServer
 
 API_KEY = "sk_sandbox_example"
+
+
+class RedirectingServer:
+    """A loopback origin that answers every GET with a 302 somewhere else.
+
+    urllib copies the request headers onto the redirected request, so this is
+    all it takes to walk a Product API key to another origin.
+    """
+
+    def __init__(self, location: str) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 - the name http.server dispatches on
+                self.send_response(302)
+                self.send_header("Location", location)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, format: str, *args: object) -> None:
+                """Silence the per-request line http.server writes to stderr."""
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = threading.Thread(
+            target=self._server.serve_forever, daemon=True
+        )
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._server.shutdown()
+        self._thread.join(timeout=5)
+        self._server.server_close()
+
+    @property
+    def base_url(self) -> str:
+        host, port = self._server.server_address[:2]
+        return "http://{}:{}".format(host, port)
 
 
 class SmokeTest(unittest.TestCase):
@@ -67,6 +106,47 @@ class SmokeTest(unittest.TestCase):
         fetch_product_descriptor(config)
 
         self.assertEqual(self.server.received[-1].path, "/v1/llms.txt")
+
+
+class RedirectTest(unittest.TestCase):
+    """The key is half the credential for one origin, so a 3xx never carries
+    it to another. README.md and SECURITY.md both say the key goes to the
+    configured base URL and nowhere else; this is that sentence, executed.
+    """
+
+    def test_a_redirect_does_not_carry_the_key_to_another_origin(self) -> None:
+        elsewhere = MockServer(api_key=API_KEY)
+        elsewhere.start()
+        self.addCleanup(elsewhere.stop)
+        redirector = RedirectingServer("{}/v1/llms.txt".format(elsewhere.base_url))
+        redirector.start()
+        self.addCleanup(redirector.stop)
+
+        # The destination is live and does log what reaches it, so the empty
+        # log below means the request was never made rather than missed.
+        fetch_product_descriptor(
+            read_config(
+                {
+                    "HYPERSCALE_API_KEY": API_KEY,
+                    "HYPERSCALE_BASE_URL": elsewhere.base_url,
+                }
+            )
+        )
+        self.assertEqual(len(elsewhere.received), 1)
+        elsewhere.received.clear()
+
+        redirected = read_config(
+            {
+                "HYPERSCALE_API_KEY": API_KEY,
+                "HYPERSCALE_BASE_URL": redirector.base_url,
+            }
+        )
+        with self.assertRaises(ProductApiError) as caught:
+            fetch_product_descriptor(redirected)
+
+        self.assertIn("redirected", str(caught.exception))
+        self.assertIn("HYPERSCALE_BASE_URL", str(caught.exception))
+        self.assertEqual(elsewhere.received, [])
 
 
 class ConfigTest(unittest.TestCase):

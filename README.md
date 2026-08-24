@@ -12,7 +12,7 @@ in the language you write.
 These are examples to copy, not a library to depend on. They ship MIT so you
 can paste them into your own project; keep the copyright line from `LICENSE`
 with whatever you take. The three packages the starters talk about
-(`@hyperscale0/udl`, `@hyperscale0/hsx`, `@hyperscale0/provider-adapter`) are
+(`@hyperscale0/udl`, `@hyperscale0/hsx`, `@hyperscale0/adl`) are
 AGPL-3.0-only, not MIT, with a commercial license available from Hyperscale
 LLC. These starters depend on none of them.
 

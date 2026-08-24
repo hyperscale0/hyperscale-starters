@@ -5,6 +5,11 @@
 // is being addressed. Sandbox keys and live keys are never interchangeable, so
 // the header is not a hint: it is half the credential. HTTP header names are
 // case-insensitive; these are the canonical spellings.
+//
+// The key goes to HYPERSCALE_BASE_URL and nowhere else: this starter refuses
+// redirects rather than following them, the same as the TypeScript and Python
+// starters. The endpoint is fixed and read-only, so there is no hop worth
+// taking.
 package main
 
 import (
@@ -95,7 +100,16 @@ func FetchProductDescriptor(config Config) (ProductDescriptor, error) {
 	request.Header.Set("Authorization", "Bearer "+config.APIKey)
 	request.Header.Set("X-Hyperscale-Environment", config.Environment)
 
-	client := &http.Client{Timeout: requestTimeout}
+	// net/http follows redirects by default and carries Authorization along
+	// whenever the destination host is the same or a subdomain, comparing hosts
+	// with the port stripped. A key belongs to exactly one origin, and this
+	// endpoint is fixed and read-only, so no 3xx is worth following.
+	client := &http.Client{
+		Timeout: requestTimeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return ProductDescriptor{}, errorf("Could not reach %s: %v", url, err)
@@ -105,6 +119,13 @@ func FetchProductDescriptor(config Config) (ProductDescriptor, error) {
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return ProductDescriptor{}, errorf("Could not read the response from %s: %v", url, err)
+	}
+
+	if response.StatusCode >= 300 && response.StatusCode <= 399 {
+		return ProductDescriptor{}, errorf(
+			"GET /v1/llms.txt was redirected, so the key was not sent on. " +
+				"Set HYPERSCALE_BASE_URL to the origin the API answers on; " +
+				"the usual cause is http:// where it serves https://.")
 	}
 
 	if response.StatusCode < 200 || response.StatusCode > 299 {

@@ -1,7 +1,10 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -160,5 +163,82 @@ func TestCountThatDisagreesWithTheLinesIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "declares 3 operations but 2 parsed") {
 		t.Errorf("error = %q", err.Error())
+	}
+}
+
+// collector is a second origin that records the Authorization header it is
+// handed, so a test can tell "the request was refused" from "the request was
+// quietly missed".
+type collector struct {
+	*httptest.Server
+
+	mutex sync.Mutex
+	seen  []string
+}
+
+func startCollector() *collector {
+	destination := &collector{}
+	destination.Server = httptest.NewServer(http.HandlerFunc(
+		func(writer http.ResponseWriter, request *http.Request) {
+			destination.mutex.Lock()
+			destination.seen = append(destination.seen, request.Header.Get("Authorization"))
+			destination.mutex.Unlock()
+			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			_, _ = writer.Write([]byte(sampleDescriptor))
+		}))
+	return destination
+}
+
+func (destination *collector) count() int {
+	destination.mutex.Lock()
+	defer destination.mutex.Unlock()
+	return len(destination.seen)
+}
+
+// TestRedirectDoesNotCarryTheKeyToAnotherOrigin holds the starter to the one
+// promise a key deserves: it goes to the configured base URL and nowhere else.
+// net/http copies Authorization onto a redirected request whenever the
+// destination host is the same or a subdomain, and it compares hosts with the
+// port stripped, so a different port on 127.0.0.1 leaks by the same rule a
+// different port in production would.
+func TestRedirectDoesNotCarryTheKeyToAnotherOrigin(t *testing.T) {
+	elsewhere := startCollector()
+	defer elsewhere.Close()
+
+	redirector := httptest.NewServer(http.HandlerFunc(
+		func(writer http.ResponseWriter, request *http.Request) {
+			http.Redirect(writer, request, elsewhere.URL+"/v1/llms.txt", http.StatusFound)
+		}))
+	defer redirector.Close()
+
+	// The destination is live and does record what reaches it, so a count that
+	// stays at one below means the request was never made, not that the test
+	// looked in the wrong place.
+	direct, err := ReadConfig(environment(elsewhere.URL, nil))
+	if err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+	if _, err := FetchProductDescriptor(direct); err != nil {
+		t.Fatalf("FetchProductDescriptor against the destination: %v", err)
+	}
+	if got := elsewhere.count(); got != 1 {
+		t.Fatalf("destination recorded %d requests, want 1", got)
+	}
+
+	config, err := ReadConfig(environment(redirector.URL, nil))
+	if err != nil {
+		t.Fatalf("ReadConfig: %v", err)
+	}
+
+	_, err = FetchProductDescriptor(config)
+	if err == nil {
+		t.Fatal("a redirect away from the configured origin was followed")
+	}
+	if !strings.Contains(err.Error(), "redirected") ||
+		!strings.Contains(err.Error(), "HYPERSCALE_BASE_URL") {
+		t.Errorf("error = %q, want the cause and the variable to set", err.Error())
+	}
+	if got := elsewhere.count(); got != 1 {
+		t.Errorf("the key reached another origin: %q", elsewhere.seen[1:])
 	}
 }
