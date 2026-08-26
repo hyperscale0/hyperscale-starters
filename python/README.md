@@ -51,29 +51,11 @@ it, so it needs no key and no network. It asserts the two headers that go out,
 the parsed descriptor that comes back, and the message you get when a key is
 refused.
 
-## What the smoke call proves
+## The smoke call, and getting a key
 
-One request, `GET /v1/llms.txt`, carrying `Authorization: Bearer <key>` and
-`X-Hyperscale-Environment: sandbox|live`. The response is your Product's own
-machine-readable descriptor, and getting it back proves four things:
-
-- The key is real.
-- The key belongs to the plane you named. Sandbox keys and live keys are never
-  interchangeable, so the environment header is half the credential, not a
-  hint.
-- Your Product has a build behind it.
-- The operations printed are the ones you can call, because the descriptor is
-  cut from the same build the API dispatches against.
-
-It is the right first call because it is the only one every Product serves.
-Everything else in your surface exists because your Product composed the
-capability behind it.
-
-## Get a key
-
-Product API keys are minted on the Developers desk in the Hyperscale portal.
-Open your Product there and mint a sandbox key. If you do not have portal
-access, ask whoever operates your Hyperscale workspace for it.
+What the one request proves and where a Product API key comes from are the same
+for all three starters, so they live once in
+[the starters README](../README.md).
 
 ## Upgrade to the generated SDK
 
