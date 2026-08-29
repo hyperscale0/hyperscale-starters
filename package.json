@@ -1,6 +1,6 @@
 {
   "name": "hyperscale-starters",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-beta.1",
   "private": true,
   "license": "MIT",
   "description": "Dependency-free example apps that call a Hyperscale Product API over plain HTTP, one per language.",

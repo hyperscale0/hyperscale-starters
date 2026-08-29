@@ -1,6 +1,6 @@
 {
   "name": "hyperscale-starter-typescript-node",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-beta.1",
   "private": true,
   "license": "MIT",
   "description": "A dependency-free Node starter that calls a Hyperscale Product API over plain HTTP.",
