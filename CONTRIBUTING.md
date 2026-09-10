@@ -1,4 +1,4 @@
-# Contributing to the Hyperscale starters
+# Contributing to Hyperscale Starters
 
 ## How changes get made
 

@@ -57,11 +57,11 @@ What the one request proves and where a Product API key comes from are the same
 for all three starters, so they live once in
 [the starters README](../README.md).
 
-## Upgrade to the generated SDK
+## Upgrade to the Hyperscale SDK
 
 This starter builds the request by hand on purpose: it is short enough to read
 in one sitting and it works before you have decided anything. Your Product also
-has a generated TypeScript SDK, and once you are past the first call it carries
+has the Hyperscale SDK, and once you are past the first call it carries
 typed inputs and outputs per operation, idempotency keys on the mutations that
 require them, retries, pagination, and per-operation examples derived from your
 own contract.

@@ -67,11 +67,11 @@ npx tsc --noEmit
 
 That is the one place a dependency is worth it, and it stays a dev dependency.
 
-## Upgrade to the generated SDK
+## Upgrade to the Hyperscale SDK
 
 This starter builds requests by hand on purpose: it is short enough to read in
 one sitting and it works before you have decided anything. Your Product also
-has a generated TypeScript SDK, and once you are past the first call, that is
+has the Hyperscale SDK, and once you are past the first call, that is
 what you want. It carries typed inputs and outputs per operation, idempotency
 keys on the mutations that require them, retries, pagination, and per-operation
 examples derived from your own contract.

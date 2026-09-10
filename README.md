@@ -1,4 +1,4 @@
-# Hyperscale starters
+# Hyperscale Starters
 
 Three small apps that call a Hyperscale Product API over plain HTTP. One per
 language, around a hundred lines each, and not one third-party dependency
@@ -60,9 +60,9 @@ composed the capability behind it, so no other route is a fair smoke test.
 
 ## Get a key
 
-Product API keys are minted on the Developers desk in the Hyperscale portal.
+Product API keys are minted on the Developers desk in Hyperscale Portal.
 Open your Product there and mint a sandbox key. If you do not have portal
-access, ask whoever operates your Hyperscale workspace for it.
+access, ask whoever operates your Hyperscale Product for it.
 
 Sandbox and live are separate planes with separate keys. Start in sandbox.
 
