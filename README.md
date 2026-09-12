@@ -1,4 +1,14 @@
-# Hyperscale Starters
+<p align="left">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/hyperscale-horizontal-white.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/brand/hyperscale-horizontal.svg">
+  <img src="docs/assets/brand/hyperscale-horizontal.svg" alt="Hyperscale™" width="394">
+</picture>
+</p>
+
+# Hyperscale starters
+
+Hyperscale™ starters. Small example apps that call a Product API over plain HTTP.
 
 Three small apps that call a Hyperscale Product API over plain HTTP. One per
 language, around a hundred lines each, and not one third-party dependency
@@ -84,3 +94,7 @@ against a local mock server.
 
 "Hyperscale" is a trademark of Hyperscale LLC. The MIT license covers the code
 in this repository and grants no permission to use the name or the marks.
+
+---
+
+Hyperscale™ is a trademark of Hyperscale LLC. Code licenses do not grant rights to the name or marks.
