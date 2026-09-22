@@ -28,7 +28,8 @@ export HYPERSCALE_API_KEY=<your Product API key>
 node src/main.ts
 ```
 
-Output looks like this:
+Mock descriptor output looks like this. The current smoke route is retired; see
+[the starters README](../README.md).
 
 ```
 Example Product (sandbox)
@@ -50,7 +51,7 @@ refused.
 
 ## The smoke call, and getting a key
 
-What the one request proves and where a Product API key comes from are the same
+The smoke route status and where a Product API key comes from are the same
 for all three starters, so they live once in
 [the starters README](../README.md).
 
@@ -67,24 +68,11 @@ npx tsc --noEmit
 
 That is the one place a dependency is worth it, and it stays a dev dependency.
 
-## Upgrade to the Hyperscale SDK
+## Continue with object discovery
 
-This starter builds requests by hand on purpose: it is short enough to read in
-one sitting and it works before you have decided anything. Your Product also
-has the Hyperscale SDK, and once you are past the first call, that is
-what you want. It carries typed inputs and outputs per operation, idempotency
-keys on the mutations that require them, retries, pagination, and per-operation
-examples derived from your own contract.
-
-The SDK is served from a private npm registry, one per Product, authenticated
-with the same key you already have. The Developers desk prints your registry
-URL and package name; put them in an `.npmrc` next to your project:
-
-```
-<scope>:registry=<your registry URL>
-//<registry host>/<registry path>/:_authToken=${HYPERSCALE_API_KEY}
-```
-
-Then install the package the desk names and keep the key in the environment,
-exactly as it is here. Nothing about `.env` changes; only the code that makes
-the call does.
+Read [Product objects and actions](https://hyperscale0.ai/docs) for runtime
+discovery and execution. The shared TypeScript client is `@hyperscale0/sdk`.
+Python and Go clients call the same HTTP routes. Discover object kinds and
+attached actions before submitting input; retain the returned Build identity,
+digest, target and revision. Retry an uncertain mutation with its original
+body and idempotency key.

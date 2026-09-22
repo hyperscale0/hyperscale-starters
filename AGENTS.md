@@ -7,8 +7,8 @@ imported. Nothing else depends on them.
 **License.** MIT, [`LICENSE`](LICENSE) at the root of this directory, copyright Hyperscale
 LLC. That is deliberate and it is narrower than it looks: MIT covers the
 starters and the code copied into them, and nothing else in the platform tree
-is MIT. The three units under [`open/`](../open/AGENTS.md) ship AGPL-3.0-only with a commercial
-license from Hyperscale LLC; everything else is proprietary.
+is MIT. The three units under [`open/`](../open/AGENTS.md) ship Tier 2 source under the Hyperscale Intellectual Property and Copyright
+License. Their NOTICE files identify Tier 1 specification paths.
 
 **Lane rules.**
 

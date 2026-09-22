@@ -23,8 +23,8 @@ These are examples to copy, not a library to depend on. They ship MIT so you
 can paste them into your own project; keep the copyright line from `LICENSE`
 with whatever you take. The three packages the starters talk about
 (`@hyperscale0/udl`, `@hyperscale0/hsx`, `@hyperscale0/adl`) are
-AGPL-3.0-only, not MIT, with a commercial license available from Hyperscale
-LLC. These starters depend on none of them.
+Tier 2 source under the Hyperscale Intellectual Property and Copyright
+License, not MIT. These starters depend on none of them.
 
 ## The matrix
 
@@ -54,19 +54,11 @@ Authorization: Bearer {HYPERSCALE_API_KEY}
 X-Hyperscale-Environment: {HYPERSCALE_ENVIRONMENT}
 ```
 
-The response is your Product's own machine-readable descriptor: its title,
-every operation it serves with method and path, and the golden paths through
-them. The starters parse the title and the operation list and print them.
-
-That one call proves four things at once. The key is real. The key belongs to
-the environment you named, because a sandbox key and a live key are never
-interchangeable. Your Product has a build behind it. And the operations you
-see are the ones you can call, because the descriptor is cut from the same
-build the API dispatches against.
-
-It is also the only call worth starting with, because it is the only one every
-Product serves. Everything else in your API surface exists because your Product
-composed the capability behind it, so no other route is a fair smoke test.
+The current clients parse a Product descriptor, but the engine no longer serves
+this route. They need migration to Product object discovery before they can act
+as a live smoke test. Their mock-server tests prove the client parser and request
+headers only. See the platform's Product objects and actions documentation for
+the six current routes.
 
 ## Get a key
 
