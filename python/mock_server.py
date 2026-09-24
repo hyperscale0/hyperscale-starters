@@ -1,5 +1,5 @@
 """A stand-in for the Product API, listening on 127.0.0.1 so the suite proves
-the whole path -- headers out, document back, parsed result -- without a key
+the whole path -- headers out, JSON back, parsed result -- without a key
 and without the network.
 """
 
@@ -11,28 +11,32 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import List, Optional
 
-#: A two-operation descriptor in the exact shape the API serves: an ``# ``
-#: title, a declared operation count, and one line per operation. The middle
-#: dot is part of the format.
-SAMPLE_DESCRIPTOR = """# Example Product
-
-> Generated for composition cmp_example from its capability closure.
-
-## Integration
-
-- Auth: bearer (secret via HYPERSCALE_API_KEY)
-- Error envelope: { error: { code, message }, requestId }
-
-## Operations (2)
-
-- GET /v1/accounts · Account list (account_list; idempotency none)
-- POST /v1/accounts · Account create (account_create; idempotency required)
-
-## Golden paths (1)
-
-- Open an account (open_account):
-  1. account_create (account_create)
-"""
+#: A two-item page in the shape ``GET /v1/operations`` serves, with a cursor
+#: that says another page follows.
+SAMPLE_OPERATIONS = json.dumps(
+    {
+        "items": [
+            {
+                "operationId": "ops_sandbox_example01",
+                "tenantId": "ten_sandbox_example01",
+                "name": "customer.create",
+                "status": "succeeded",
+                "createdAt": "2026-09-25T09:00:00.000Z",
+            },
+            {
+                "operationId": "ops_sandbox_example02",
+                "tenantId": "ten_sandbox_example01",
+                "name": "account.create",
+                "status": "failed",
+                "errorCode": "validation_failed",
+                "errorMessage": "currency is required",
+                "createdAt": "2026-09-25T09:01:00.000Z",
+            },
+        ],
+        "nextCursor": "cursor_example",
+        "statusCounts": {"failed": 1, "succeeded": 1},
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -46,7 +50,7 @@ class ReceivedRequest:
 
 
 class MockServer:
-    def __init__(self, api_key: str, document: str = SAMPLE_DESCRIPTOR) -> None:
+    def __init__(self, api_key: str, document: str = SAMPLE_OPERATIONS) -> None:
         self.received: List[ReceivedRequest] = []
         received = self.received
 
@@ -75,7 +79,7 @@ class MockServer:
                         ),
                     )
                     return
-                self._respond(200, "text/plain; charset=utf-8", document)
+                self._respond(200, "application/json", document)
 
             def _respond(self, status: int, content_type: str, body: str) -> None:
                 encoded = body.encode("utf-8")

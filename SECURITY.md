@@ -21,9 +21,9 @@ so the surface is small and specific:
   origin other than the configured base URL.
 - A starter that would send a sandbox key to the live plane, or the reverse,
   through the environment header it builds.
-- A starter that trusts the response document into something dangerous. The
-  descriptor is text from a server the operator chose with
-  `HYPERSCALE_BASE_URL`, so a capture that reaches a shell, a file path, or a
+- A starter that trusts the response into something dangerous. The
+  operation list is JSON from a server the operator chose with
+  `HYPERSCALE_BASE_URL`, so a field that reaches a shell, a file path, or a
   generated file is a bug even though the server is normally ours.
 - Anything in the copy-paste path that puts a person at risk: an example
   `.env` that is not ignored, a README step that suggests committing a secret.

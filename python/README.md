@@ -6,8 +6,8 @@ files, standard library only.
 ## Install
 
 There is nothing to install. No virtual environment, no `pip`, no
-`pyproject.toml`: the starter imports `urllib`, `json`, and `re`, all of which
-ship with Python.
+`pyproject.toml`: the starter imports `urllib` and `json`, both of which ship
+with Python.
 
 ```bash
 python3 --version   # 3.9 or newer
@@ -31,15 +31,17 @@ export HYPERSCALE_API_KEY=<your Product API key>
 python3 main.py
 ```
 
-Mock descriptor output looks like this. The current smoke route is retired; see
-[the starters README](../README.md).
+Output against the test mock looks like this:
 
 ```
-Example Product (sandbox)
-2 operations
-  GET    /v1/accounts  account_list
-  POST   /v1/accounts  account_create
+Operations (sandbox)
+  succeeded customer.create  ops_sandbox_example01
+  failed    account.create  ops_sandbox_example02
+  and more on the next page
 ```
+
+A new Product prints `none yet` under the heading until you run an action
+with the key.
 
 ## Test
 
@@ -49,20 +51,10 @@ python3 -m unittest
 
 The suite starts a mock API on `127.0.0.1` and runs the real client against
 it, so it needs no key and no network. It asserts the two headers that go out,
-the parsed descriptor that comes back, and the message you get when a key is
+the parsed operations that come back, and the message you get when a key is
 refused.
 
-## The smoke call, and getting a key
+## Getting a key
 
-The smoke route status and where a Product API key comes from are the same
-for all three starters, so they live once in
-[the starters README](../README.md).
-
-## Continue with object discovery
-
-Read [Product objects and actions](https://hyperscale0.ai/docs) for runtime
-discovery and execution. The shared TypeScript client is `@hyperscale0/sdk`.
-Python and Go clients call the same HTTP routes. Discover object kinds and
-attached actions before submitting input; retain the returned Build identity,
-digest, target and revision. Retry an uncertain mutation with its original
-body and idempotency key.
+[The starters README](../README.md) says where to mint a Product API key and
+where object discovery is documented.

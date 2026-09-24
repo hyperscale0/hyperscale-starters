@@ -1,28 +1,21 @@
-// The whole starter: read three environment variables, make one call, print
-// what came back. Run it with `node src/main.ts` (Node 22.18 or newer strips
-// the types itself, so there is no build step and no dependency).
-import {
-  fetchProductDescriptor,
-  ProductApiError,
-  readConfig,
-} from "./client.ts";
-
-/** Enough to see the shape without scrolling; the rest is a count. */
-const PREVIEW = 10;
+// Read three environment variables, make one call, print the result. Run with
+// `node src/main.ts`: Node 22.18+ strips the types, so there is no build step.
+import { listOperations, ProductApiError, readConfig } from "./client.ts";
 
 async function main(): Promise<void> {
   const config = readConfig(process.env);
-  const product = await fetchProductDescriptor(config);
+  const page = await listOperations(config);
 
-  console.log(`${product.title} (${config.environment})`);
-  console.log(`${product.operations.length} operations`);
-  for (const operation of product.operations.slice(0, PREVIEW)) {
+  console.log(`Operations (${config.environment})`);
+  if (page.operations.length === 0) {
+    console.log("  none yet; actions you run with this key show up here");
+  }
+  for (const operation of page.operations) {
     console.log(
-      `  ${operation.method.padEnd(6)} ${operation.path}  ${operation.operationId}`,
+      `  ${operation.status.padEnd(9)} ${operation.name}  ${operation.operationId}`,
     );
   }
-  const rest = product.operations.length - PREVIEW;
-  if (rest > 0) console.log(`  and ${rest} more`);
+  if (page.hasMore) console.log("  and more on the next page");
 }
 
 try {

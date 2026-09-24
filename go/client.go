@@ -17,8 +17,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -28,6 +26,9 @@ const DefaultBaseURL = "https://hyperscale0.ai"
 
 const requestTimeout = 30 * time.Second
 
+// operationsPath asks for one page of ten, enough to see the shape.
+const operationsPath = "/v1/operations?limit=10"
+
 // Config is the whole configuration surface: three environment variables.
 type Config struct {
 	APIKey      string
@@ -35,17 +36,17 @@ type Config struct {
 	Environment string
 }
 
-// Operation is one callable route of a Product.
+// Operation is one recorded execution: what ran and how it ended.
 type Operation struct {
-	Method      string
-	Path        string
 	OperationID string
+	Name        string
+	Status      string
 }
 
-// ProductDescriptor is what the smoke call returns, parsed.
-type ProductDescriptor struct {
-	Title      string
+// OperationPage is what the smoke call returns, parsed.
+type OperationPage struct {
 	Operations []Operation
+	HasMore    bool
 }
 
 // ProductAPIError is a failure the person running this can fix. main prints it
@@ -85,18 +86,18 @@ func ReadConfig(lookup func(string) string) (Config, error) {
 	return Config{APIKey: apiKey, BaseURL: baseURL, Environment: environment}, nil
 }
 
-// FetchProductDescriptor makes the one call every Product serves, whatever it
-// was composed from. Everything else in the API surface exists because the
-// Product composed the capability behind it, so this is the only fair smoke
-// test.
-func FetchProductDescriptor(config Config) (ProductDescriptor, error) {
-	url := config.BaseURL + "/v1/llms.txt"
+// ListOperations makes the one read every Product key is allowed, whatever the
+// Product was composed from: the capability that serves it is part of every
+// Product. A fresh Product has run nothing yet, so an empty list with HTTP 200
+// still proves the key.
+func ListOperations(config Config) (OperationPage, error) {
+	url := config.BaseURL + operationsPath
 
 	request, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return ProductDescriptor{}, errorf("Could not build a request for %s: %v", url, err)
+		return OperationPage{}, errorf("Could not build a request for %s: %v", url, err)
 	}
-	request.Header.Set("Accept", "text/plain")
+	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+config.APIKey)
 	request.Header.Set("X-Hyperscale-Environment", config.Environment)
 
@@ -112,18 +113,18 @@ func FetchProductDescriptor(config Config) (ProductDescriptor, error) {
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return ProductDescriptor{}, errorf("Could not reach %s: %v", url, err)
+		return OperationPage{}, errorf("Could not reach %s: %v", url, err)
 	}
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return ProductDescriptor{}, errorf("Could not read the response from %s: %v", url, err)
+		return OperationPage{}, errorf("Could not read the response from %s: %v", url, err)
 	}
 
 	if response.StatusCode >= 300 && response.StatusCode <= 399 {
-		return ProductDescriptor{}, errorf(
-			"GET /v1/llms.txt was redirected, so the key was not sent on. " +
+		return OperationPage{}, errorf(
+			"GET /v1/operations was redirected, so the key was not sent on. " +
 				"Set HYPERSCALE_BASE_URL to the origin the API answers on; " +
 				"the usual cause is http:// where it serves https://.")
 	}
@@ -136,53 +137,44 @@ func FetchProductDescriptor(config Config) (ProductDescriptor, error) {
 		if detail != "" {
 			detail = " - " + detail
 		}
-		return ProductDescriptor{}, errorf(
-			"GET /v1/llms.txt failed: HTTP %d%s", response.StatusCode, detail)
+		return OperationPage{}, errorf(
+			"GET /v1/operations failed: HTTP %d%s", response.StatusCode, detail)
 	}
 
-	return ParseProductDescriptor(string(body))
+	return ParseOperationPage(body)
 }
 
-var (
-	titlePattern         = regexp.MustCompile(`(?m)^# (.+)$`)
-	declaredCountPattern = regexp.MustCompile(`(?m)^## Operations \((\d+)\)$`)
-	operationPattern     = regexp.MustCompile(
-		`(?m)^- ([A-Z]+) (\S+) · .+ \((\S+); idempotency \S+\)$`)
-)
-
-// ParseProductDescriptor reads the descriptor with three anchored patterns
-// rather than guessing. Parsing fewer operations than the document declares
-// means the format moved under us, and that has to fail loudly: a starter that
-// silently printed a short list would look like a Product missing half its
-// surface.
-func ParseProductDescriptor(document string) (ProductDescriptor, error) {
-	title := titlePattern.FindStringSubmatch(document)
-	declared := declaredCountPattern.FindStringSubmatch(document)
-	if title == nil || declared == nil {
-		return ProductDescriptor{}, errorf(
-			"The response is not a product descriptor. Check HYPERSCALE_BASE_URL points at the API origin.")
+// ParseOperationPage refuses anything that is not an operation list, and any
+// item without an id or a name. A starter that printed blank rows would hide
+// the format moving under it.
+func ParseOperationPage(body []byte) (OperationPage, error) {
+	var page struct {
+		Items []struct {
+			OperationID string `json:"operationId"`
+			Name        string `json:"name"`
+			Status      string `json:"status"`
+		} `json:"items"`
+		NextCursor string `json:"nextCursor"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil || page.Items == nil {
+		return OperationPage{}, errorf(
+			"The response is not an operation list. Check HYPERSCALE_BASE_URL points at the API origin.")
 	}
 
-	operations := []Operation{}
-	for _, match := range operationPattern.FindAllStringSubmatch(document, -1) {
+	operations := make([]Operation, 0, len(page.Items))
+	for _, item := range page.Items {
+		if item.OperationID == "" || item.Name == "" {
+			return OperationPage{}, errorf(
+				"An operation arrived without an id or a name; this starter is out of date.")
+		}
 		operations = append(operations, Operation{
-			Method:      match[1],
-			Path:        match[2],
-			OperationID: match[3],
+			OperationID: item.OperationID,
+			Name:        item.Name,
+			Status:      item.Status,
 		})
 	}
 
-	expected, err := strconv.Atoi(declared[1])
-	if err != nil {
-		return ProductDescriptor{}, errorf("The descriptor declares an unreadable operation count.")
-	}
-	if len(operations) != expected {
-		return ProductDescriptor{}, errorf(
-			"The descriptor declares %d operations but %d parsed; this starter is out of date.",
-			expected, len(operations))
-	}
-
-	return ProductDescriptor{Title: strings.TrimSpace(title[1]), Operations: operations}, nil
+	return OperationPage{Operations: operations, HasMore: page.NextCursor != ""}, nil
 }
 
 // errorEnvelope reads the API's error shape: {"error":{"code","message"},"requestId"}.

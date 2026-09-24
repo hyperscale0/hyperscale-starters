@@ -7,31 +7,28 @@ from __future__ import annotations
 import os
 import sys
 
-from client import ProductApiError, fetch_product_descriptor, read_config
-
-#: Enough to see the shape without scrolling; the rest is a count.
-PREVIEW = 10
+from client import ProductApiError, list_operations, read_config
 
 
 def main() -> int:
     try:
         config = read_config(os.environ)
-        product = fetch_product_descriptor(config)
+        page = list_operations(config)
     except ProductApiError as error:
         print(error, file=sys.stderr)
         return 1
 
-    print("{} ({})".format(product.title, config.environment))
-    print("{} operations".format(len(product.operations)))
-    for operation in product.operations[:PREVIEW]:
+    print("Operations ({})".format(config.environment))
+    if not page.operations:
+        print("  none yet; actions you run with this key show up here")
+    for operation in page.operations:
         print(
-            "  {:<6} {}  {}".format(
-                operation.method, operation.path, operation.operation_id
+            "  {:<9} {}  {}".format(
+                operation.status, operation.name, operation.operation_id
             )
         )
-    rest = len(product.operations) - PREVIEW
-    if rest > 0:
-        print("  and {} more".format(rest))
+    if page.has_more:
+        print("  and more on the next page")
     return 0
 
 

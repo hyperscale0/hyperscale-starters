@@ -8,16 +8,13 @@
 
 # Hyperscale starters
 
-Hyperscale™ starters. Small example apps that call a Product API over plain HTTP.
+Hyperscale™ starters: three small apps that call a Product API over plain HTTP.
+One per language, around a hundred lines each, with no third-party dependency.
 
-Three small apps that call a Hyperscale Product API over plain HTTP. One per
-language, around a hundred lines each, and not one third-party dependency
-between them.
-
-They answer one question in under a minute: is my key real, and what did my
-Product actually build? Every starter makes the same call and prints the
-answer, so you can throw away the one you do not need and keep reading code
-in the language you write.
+They answer one question in under a minute: is my key real, and what has my
+Product run? Every starter makes the same call and prints the answer, so you
+can throw away the one you do not need and keep reading code in the language
+you write.
 
 These are examples to copy, not a library to depend on. They ship MIT so you
 can paste them into your own project; keep the copyright line from `LICENSE`
@@ -49,16 +46,25 @@ Each starter carries a `.env.example` naming those three.
 Every starter makes one request:
 
 ```
-GET {HYPERSCALE_BASE_URL}/v1/llms.txt
+GET {HYPERSCALE_BASE_URL}/v1/operations?limit=10
 Authorization: Bearer {HYPERSCALE_API_KEY}
 X-Hyperscale-Environment: {HYPERSCALE_ENVIRONMENT}
 ```
 
-The current clients parse a Product descriptor, but the engine no longer serves
-this route. They need migration to Product object discovery before they can act
-as a live smoke test. Their mock-server tests prove the client parser and request
-headers only. See the platform's Product objects and actions documentation for
-the six current routes.
+The answer is one page of Operations: each action that ran, its name and how
+it ended. Every Product API key may read this list, whatever the Product was
+composed from. A new Product has run nothing yet, so an empty list with
+HTTP 200 still proves the key. A refused key prints the HTTP status and the
+API's error code.
+
+## Continue with object discovery
+
+Read [Product objects and actions](https://hyperscale0.ai/docs) for runtime
+discovery and execution. The shared TypeScript client is `@hyperscale0/sdk`;
+Python and Go call the same HTTP routes. Discover object kinds and attached
+actions before submitting input, and keep the returned Build identity, digest,
+target and revision. Retry an uncertain mutation with its original body and
+idempotency key.
 
 ## Get a key
 
@@ -81,11 +87,6 @@ coming back.
 `CONTRIBUTING.md` has the shape a new language has to match. The short version:
 same three environment variables, same one call, no dependencies, and a test
 against a local mock server.
-
-## Trademarks
-
-"Hyperscale" is a trademark of Hyperscale LLC. The MIT license covers the code
-in this repository and grants no permission to use the name or the marks.
 
 ---
 

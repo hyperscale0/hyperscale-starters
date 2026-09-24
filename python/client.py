@@ -14,9 +14,8 @@ starters. The endpoint is fixed and read-only, so there is no hop worth taking.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
-from typing import List, Mapping, Optional, Sequence
+from typing import Any, List, Mapping, Optional, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
@@ -26,6 +25,9 @@ DEFAULT_BASE_URL = "https://hyperscale0.ai"
 ENVIRONMENTS = ("sandbox", "live")
 
 TIMEOUT_SECONDS = 30
+
+#: One page of ten, enough to see the shape.
+OPERATIONS_PATH = "/v1/operations?limit=10"
 
 
 class _RefuseRedirects(HTTPRedirectHandler):
@@ -60,15 +62,17 @@ class Config:
 
 @dataclass(frozen=True)
 class Operation:
-    method: str
-    path: str
+    """One recorded execution: what ran and how it ended."""
+
     operation_id: str
+    name: str
+    status: str
 
 
 @dataclass(frozen=True)
-class ProductDescriptor:
-    title: str
+class OperationPage:
     operations: Sequence[Operation]
+    has_more: bool
 
 
 def read_config(environment_variables: Mapping[str, str]) -> Config:
@@ -94,17 +98,17 @@ def read_config(environment_variables: Mapping[str, str]) -> Config:
     return Config(api_key=api_key, base_url=base_url, environment=environment)
 
 
-def fetch_product_descriptor(config: Config) -> ProductDescriptor:
-    """The one call every Product serves, whatever it was composed from.
+def list_operations(config: Config) -> OperationPage:
+    """The one read every Product key is allowed, whatever it was composed from.
 
-    Everything else in the API surface exists because the Product composed the
-    capability behind it, so this is the only fair smoke test.
+    The capability that serves it is part of every Product. A fresh Product has
+    run nothing yet, so an empty list with HTTP 200 still proves the key.
     """
-    url = "{}/v1/llms.txt".format(config.base_url)
+    url = "{}{}".format(config.base_url, OPERATIONS_PATH)
     request = Request(
         url,
         headers={
-            "Accept": "text/plain",
+            "Accept": "application/json",
             "Authorization": "Bearer {}".format(config.api_key),
             "X-Hyperscale-Environment": config.environment,
         },
@@ -118,7 +122,7 @@ def fetch_product_descriptor(config: Config) -> ProductDescriptor:
             # Nothing reads this body, so the socket has to be closed by hand.
             error.close()
             raise ProductApiError(
-                "GET /v1/llms.txt was redirected, so the key was not sent on. "
+                "GET /v1/operations was redirected, so the key was not sent on. "
                 "Set HYPERSCALE_BASE_URL to the origin the API answers on; "
                 "the usual cause is http:// where it serves https://."
             ) from None
@@ -126,7 +130,7 @@ def fetch_product_descriptor(config: Config) -> ProductDescriptor:
         failed = error.read().decode("utf-8", errors="replace")
         detail = _error_envelope(failed) or failed.strip()
         raise ProductApiError(
-            "GET /v1/llms.txt failed: HTTP {}{}".format(
+            "GET /v1/operations failed: HTTP {}{}".format(
                 error.code, "" if not detail else " - {}".format(detail)
             )
         ) from None
@@ -135,44 +139,50 @@ def fetch_product_descriptor(config: Config) -> ProductDescriptor:
             "Could not reach {}: {}".format(url, error.reason)
         ) from None
 
-    return parse_product_descriptor(body)
+    return parse_operation_page(body)
 
 
-_TITLE = re.compile(r"^# (.+)$", re.MULTILINE)
-_DECLARED_COUNT = re.compile(r"^## Operations \((\d+)\)$", re.MULTILINE)
-_OPERATION = re.compile(
-    r"^- ([A-Z]+) (\S+) · .+ \((\S+); idempotency \S+\)$", re.MULTILINE
-)
-
-
-def parse_product_descriptor(document: str) -> ProductDescriptor:
-    """Read the descriptor with three anchored patterns rather than guessing.
-
-    Parsing fewer operations than the document declares means the format moved
-    under us, and that has to fail loudly: a starter that silently printed a
-    short list would look like a Product missing half its surface.
+def parse_operation_page(body: str) -> OperationPage:
+    """Refuse anything that is not an operation list, and any item without an
+    id or a name. A starter that printed blank rows would hide the format
+    moving under it.
     """
-    title = _TITLE.search(document)
-    declared = _DECLARED_COUNT.search(document)
-    if title is None or declared is None:
+    try:
+        parsed: Any = json.loads(body)
+    except ValueError:
+        parsed = None
+    items = parsed.get("items") if isinstance(parsed, dict) else None
+    if not isinstance(items, list):
         raise ProductApiError(
-            "The response is not a product descriptor. Check "
+            "The response is not an operation list. Check "
             "HYPERSCALE_BASE_URL points at the API origin."
         )
 
-    operations: List[Operation] = [
-        Operation(method=match.group(1), path=match.group(2), operation_id=match.group(3))
-        for match in _OPERATION.finditer(document)
-    ]
-
-    expected = int(declared.group(1))
-    if len(operations) != expected:
-        raise ProductApiError(
-            "The descriptor declares {} operations but {} parsed; "
-            "this starter is out of date.".format(expected, len(operations))
+    operations: List[Operation] = []
+    for item in items:
+        if not isinstance(item, dict):
+            item = {}
+        operation_id = item.get("operationId")
+        name = item.get("name")
+        status = item.get("status")
+        if not (isinstance(operation_id, str) and operation_id) or not (
+            isinstance(name, str) and name
+        ):
+            raise ProductApiError(
+                "An operation arrived without an id or a name; "
+                "this starter is out of date."
+            )
+        operations.append(
+            Operation(
+                operation_id=operation_id,
+                name=name,
+                status=status if isinstance(status, str) else "",
+            )
         )
 
-    return ProductDescriptor(title=title.group(1).strip(), operations=operations)
+    return OperationPage(
+        operations=operations, has_more=bool(parsed.get("nextCursor"))
+    )
 
 
 def _error_envelope(body: str) -> Optional[str]:

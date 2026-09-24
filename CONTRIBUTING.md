@@ -52,10 +52,10 @@ is that the same program reads the same way in every language:
    `HYPERSCALE_ENVIRONMENT` defaulting to `sandbox`. A missing key or a
    nonsense environment fails with a sentence a person can act on, not a
    stack trace.
-2. **The same one call.** `GET /v1/llms.txt` with the bearer key and the
-   environment header, parsed into a title and a list of operations. Assert
-   the parsed count against the count the document declares, so a format
-   change fails loudly instead of printing a shorter list.
+2. **The same one call.** `GET /v1/operations?limit=10` with the bearer key
+   and the environment header, parsed into a list of operations. Refuse a
+   response that is not an operation list, and any item without an id or a
+   name, so a format change fails loudly instead of printing blank rows.
 3. **No dependencies.** The standard library, its HTTP client, and nothing
    else. A starter that installs a package stops being readable in one sitting
    and starts being a supply chain. This also means no generated Hyperscale

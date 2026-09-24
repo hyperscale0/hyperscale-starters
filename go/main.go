@@ -7,28 +7,26 @@ import (
 	"os"
 )
 
-// preview is enough to see the shape without scrolling; the rest is a count.
-const preview = 10
-
 func main() {
 	config, err := ReadConfig(os.Getenv)
 	if err != nil {
 		fail(err)
 	}
 
-	product, err := FetchProductDescriptor(config)
+	page, err := ListOperations(config)
 	if err != nil {
 		fail(err)
 	}
 
-	fmt.Printf("%s (%s)\n", product.Title, config.Environment)
-	fmt.Printf("%d operations\n", len(product.Operations))
-	for index, operation := range product.Operations {
-		if index == preview {
-			fmt.Printf("  and %d more\n", len(product.Operations)-preview)
-			break
-		}
-		fmt.Printf("  %-6s %s  %s\n", operation.Method, operation.Path, operation.OperationID)
+	fmt.Printf("Operations (%s)\n", config.Environment)
+	if len(page.Operations) == 0 {
+		fmt.Println("  none yet; actions you run with this key show up here")
+	}
+	for _, operation := range page.Operations {
+		fmt.Printf("  %-9s %s  %s\n", operation.Status, operation.Name, operation.OperationID)
+	}
+	if page.HasMore {
+		fmt.Println("  and more on the next page")
 	}
 }
 

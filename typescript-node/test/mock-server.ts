@@ -1,6 +1,5 @@
-// A stand-in for the Product API, listening on 127.0.0.1 so the suite proves
-// the whole path -- headers out, document back, parsed result -- without a key
-// and without the network.
+// A stand-in Product API on 127.0.0.1: the suite proves the whole path without
+// a key or the network.
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -19,29 +18,31 @@ export interface MockServer {
 }
 
 /**
- * A two-operation descriptor in the exact shape the API serves: an `# ` title,
- * a declared operation count, and one line per operation. The middle dot is
- * part of the format.
+ * A two-item page in the shape `GET /v1/operations` serves, with a cursor that
+ * says another page follows.
  */
-export const SAMPLE_DESCRIPTOR = `# Example Product
-
-> Generated for composition cmp_example from its capability closure.
-
-## Integration
-
-- Auth: bearer (secret via HYPERSCALE_API_KEY)
-- Error envelope: { error: { code, message }, requestId }
-
-## Operations (2)
-
-- GET /v1/accounts · Account list (account_list; idempotency none)
-- POST /v1/accounts · Account create (account_create; idempotency required)
-
-## Golden paths (1)
-
-- Open an account (open_account):
-  1. accountCreate (account_create)
-`;
+export const SAMPLE_OPERATIONS = JSON.stringify({
+  items: [
+    {
+      operationId: "ops_sandbox_example01",
+      tenantId: "ten_sandbox_example01",
+      name: "customer.create",
+      status: "succeeded",
+      createdAt: "2026-09-25T09:00:00.000Z",
+    },
+    {
+      operationId: "ops_sandbox_example02",
+      tenantId: "ten_sandbox_example01",
+      name: "account.create",
+      status: "failed",
+      errorCode: "validation_failed",
+      errorMessage: "currency is required",
+      createdAt: "2026-09-25T09:01:00.000Z",
+    },
+  ],
+  nextCursor: "cursor_example",
+  statusCounts: { failed: 1, succeeded: 1 },
+});
 
 export async function startMockServer(options: {
   readonly apiKey: string;
@@ -66,8 +67,8 @@ export async function startMockServer(options: {
       return;
     }
 
-    response.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
-    response.end(options.document ?? SAMPLE_DESCRIPTOR);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(options.document ?? SAMPLE_OPERATIONS);
   });
 
   // Port 0 lets the kernel pick a free port, so two suites never collide.

@@ -4,38 +4,49 @@ import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 
 import {
-  fetchProductDescriptor,
-  parseProductDescriptor,
+  listOperations,
+  OPERATIONS_PATH,
+  parseOperationPage,
   ProductApiError,
   readConfig,
 } from "../src/client.ts";
-import { SAMPLE_DESCRIPTOR, startMockServer } from "./mock-server.ts";
+import { startMockServer } from "./mock-server.ts";
 
 const API_KEY = "sk_sandbox_example";
 
 const server = await startMockServer({ apiKey: API_KEY });
 after(() => server.stop());
 
-test("the smoke call sends the key and the environment, and parses the descriptor", async () => {
+test("the smoke call sends the key and the environment, and parses the operations", async () => {
   const config = readConfig({
     HYPERSCALE_API_KEY: API_KEY,
     HYPERSCALE_BASE_URL: server.baseUrl,
     HYPERSCALE_ENVIRONMENT: "sandbox",
   });
 
-  const product = await fetchProductDescriptor(config);
+  const page = await listOperations(config);
 
-  assert.equal(product.title, "Example Product");
-  assert.deepEqual(product.operations, [
-    { method: "GET", path: "/v1/accounts", operationId: "account_list" },
-    { method: "POST", path: "/v1/accounts", operationId: "account_create" },
-  ]);
+  assert.deepEqual(page, {
+    operations: [
+      {
+        operationId: "ops_sandbox_example01",
+        name: "customer.create",
+        status: "succeeded",
+      },
+      {
+        operationId: "ops_sandbox_example02",
+        name: "account.create",
+        status: "failed",
+      },
+    ],
+    hasMore: true,
+  });
 
   const request = server.received.at(-1);
-  assert.equal(request?.url, "/v1/llms.txt");
+  assert.equal(request?.url, OPERATIONS_PATH);
   assert.equal(request?.authorization, `Bearer ${API_KEY}`);
   assert.equal(request?.environment, "sandbox");
-  assert.equal(request?.accept, "text/plain");
+  assert.equal(request?.accept, "application/json");
 });
 
 test("the live plane is addressed by the header, not by a second host", async () => {
@@ -45,7 +56,7 @@ test("the live plane is addressed by the header, not by a second host", async ()
     HYPERSCALE_ENVIRONMENT: "live",
   });
 
-  await fetchProductDescriptor(config);
+  await listOperations(config);
 
   assert.equal(server.received.at(-1)?.environment, "live");
 });
@@ -57,7 +68,7 @@ test("a refused key surfaces the error code, not a stack", async () => {
   });
 
   await assert.rejects(
-    () => fetchProductDescriptor(config),
+    () => listOperations(config),
     (error: unknown) =>
       error instanceof ProductApiError &&
       error.message.includes("HTTP 401") &&
@@ -71,9 +82,9 @@ test("a trailing slash on the base URL does not double up the path", async () =>
     HYPERSCALE_BASE_URL: `${server.baseUrl}///`,
   });
 
-  await fetchProductDescriptor(config);
+  await listOperations(config);
 
-  assert.equal(server.received.at(-1)?.url, "/v1/llms.txt");
+  assert.equal(server.received.at(-1)?.url, OPERATIONS_PATH);
 });
 
 test("config defaults to sandbox and refuses anything but the two planes", () => {
@@ -97,14 +108,18 @@ test("config defaults to sandbox and refuses anything but the two planes", () =>
   );
 });
 
-test("a descriptor whose count disagrees with its lines is refused", () => {
-  const short = SAMPLE_DESCRIPTOR.replace(
-    "## Operations (2)",
-    "## Operations (3)",
-  );
+test("a response that is not an operation list is refused", () => {
+  for (const body of [
+    "# Example Product",
+    '{"error":"none"}',
+    '{"items":[{"name":"customer.create"}]}',
+  ]) {
+    assert.throws(() => parseOperationPage(body), ProductApiError);
+  }
 
-  assert.throws(() => parseProductDescriptor(short), {
-    message: /declares 3 operations but 2 parsed/,
+  assert.deepEqual(parseOperationPage('{"items":[]}'), {
+    operations: [],
+    hasMore: false,
   });
 });
 
@@ -122,10 +137,8 @@ test("a redirect does not carry the key to another origin", async () => {
   const { port } = redirector.address() as AddressInfo;
 
   try {
-    // The destination is live and does record what reaches it, so a log that
-    // stays at one below means the request was never made, not that the test
-    // looked in the wrong place.
-    await fetchProductDescriptor(
+    // The destination records what reaches it, so one entry means no hop.
+    await listOperations(
       readConfig({
         HYPERSCALE_API_KEY: API_KEY,
         HYPERSCALE_BASE_URL: elsewhere.baseUrl,
@@ -134,7 +147,7 @@ test("a redirect does not carry the key to another origin", async () => {
     assert.equal(elsewhere.received.length, 1);
 
     await assert.rejects(
-      fetchProductDescriptor(
+      listOperations(
         readConfig({
           HYPERSCALE_API_KEY: API_KEY,
           HYPERSCALE_BASE_URL: `http://127.0.0.1:${port}`,

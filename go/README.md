@@ -30,15 +30,17 @@ export HYPERSCALE_API_KEY=<your Product API key>
 go run .
 ```
 
-Mock descriptor output looks like this. The current smoke route is retired; see
-[the starters README](../README.md).
+Output against the test mock looks like this:
 
 ```
-Example Product (sandbox)
-2 operations
-  GET    /v1/accounts  account_list
-  POST   /v1/accounts  account_create
+Operations (sandbox)
+  succeeded customer.create  ops_sandbox_example01
+  failed    account.create  ops_sandbox_example02
+  and more on the next page
 ```
+
+A new Product prints `none yet` under the heading until you run an action
+with the key.
 
 ## Test
 
@@ -48,7 +50,7 @@ go test ./...
 
 The suite starts a mock API on `127.0.0.1` with `httptest` and runs the real
 client against it, so it needs no key and no network. It asserts the two
-headers that go out, the parsed descriptor that comes back, and the message
+headers that go out, the parsed operations that come back, and the message
 you get when a key is refused.
 
 `ReadConfig` takes a lookup function rather than calling `os.Getenv` itself,
@@ -64,17 +66,7 @@ go build -o /dev/null ./...
 The `-o /dev/null` is deliberate: a bare `go build` in a `main` package writes
 an executable named after the directory into your checkout.
 
-## The smoke call, and getting a key
+## Getting a key
 
-The smoke route status and where a Product API key comes from are the same
-for all three starters, so they live once in
-[the starters README](../README.md).
-
-## Continue with object discovery
-
-Read [Product objects and actions](https://hyperscale0.ai/docs) for runtime
-discovery and execution. The shared TypeScript client is `@hyperscale0/sdk`.
-Python and Go clients call the same HTTP routes. Discover object kinds and
-attached actions before submitting input; retain the returned Build identity,
-digest, target and revision. Retry an uncertain mutation with its original
-body and idempotency key.
+[The starters README](../README.md) says where to mint a Product API key and
+where object discovery is documented.

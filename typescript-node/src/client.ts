@@ -1,27 +1,23 @@
 /**
  * The Product API, called with `fetch` and nothing else.
  *
- * Two headers carry everything. `Authorization: Bearer <key>` presents the
- * Product API key, and `X-Hyperscale-Environment` picks which plane of that
- * key is being addressed. Sandbox keys and live keys are never
- * interchangeable, so the header is not a hint: it is half the credential.
- * HTTP header names are case-insensitive; these are the canonical spellings.
+ * `Authorization: Bearer <key>` presents the Product API key and
+ * `X-Hyperscale-Environment` picks the sandbox or live plane. Sandbox and live
+ * keys are never interchangeable, so the environment header is half the
+ * credential.
  *
- * The key goes to HYPERSCALE_BASE_URL and nowhere else: this starter refuses
- * redirects rather than following them, the same as the Go and Python
- * starters. The endpoint is fixed and read-only, so there is no hop worth
- * taking.
+ * The key goes to HYPERSCALE_BASE_URL and nowhere else: redirects are
+ * refused, as in the Go and Python starters.
  */
 
-/** The public origin. Override it with HYPERSCALE_BASE_URL. */
+/** Override with HYPERSCALE_BASE_URL. */
 const DEFAULT_BASE_URL = "https://hyperscale0.ai";
 
-/**
- * The whole deadline for the call, connect through body. A host that sends
- * headers and then stops streaming would otherwise leave the starter waiting
- * with nothing on screen and no error.
- */
+/** Deadline for the whole call, so a stalled host fails instead of hanging. */
 const TIMEOUT_MS = 30_000;
+
+/** One page of ten, enough to see the shape. */
+export const OPERATIONS_PATH = "/v1/operations?limit=10";
 
 export type Environment = "sandbox" | "live";
 
@@ -31,15 +27,16 @@ export interface Config {
   readonly environment: Environment;
 }
 
+/** One recorded execution: what ran and how it ended. */
 export interface Operation {
-  readonly method: string;
-  readonly path: string;
   readonly operationId: string;
+  readonly name: string;
+  readonly status: string;
 }
 
-export interface ProductDescriptor {
-  readonly title: string;
+export interface OperationPage {
   readonly operations: readonly Operation[];
+  readonly hasMore: boolean;
 }
 
 /** A failure the person running this can fix, printed without a stack. */
@@ -71,40 +68,35 @@ export function readConfig(
 }
 
 /**
- * The one call every Product serves, whatever it was composed from: the
- * Product's own machine-readable descriptor. Everything else in the API
- * surface exists because the Product composed the capability behind it.
+ * The one read every Product key is allowed, whatever the Product was composed
+ * from: the capability that serves it is part of every Product. A fresh
+ * Product has run nothing yet, so an empty list with HTTP 200 still proves
+ * the key.
  */
-export async function fetchProductDescriptor(
-  config: Config,
-): Promise<ProductDescriptor> {
-  const url = `${config.baseUrl}/v1/llms.txt`;
+export async function listOperations(config: Config): Promise<OperationPage> {
+  const url = `${config.baseUrl}${OPERATIONS_PATH}`;
 
   let response: Response;
   let body: string;
-  // The body read is inside the try because a stream that dies mid-body is
-  // the same class of failure as a connection that never opened, and both owe
-  // the reader a message rather than a stack.
+  // The body read is inside the try: a stream that dies mid-body owes the
+  // reader a message, not a stack.
   try {
     response = await fetch(url, {
       headers: {
-        accept: "text/plain",
+        accept: "application/json",
         authorization: `Bearer ${config.apiKey}`,
         "x-hyperscale-environment": config.environment,
       },
       signal: AbortSignal.timeout(TIMEOUT_MS),
-      // The key belongs to one origin, so a 3xx is refused rather than
-      // followed. Node happens to strip Authorization on a cross-origin hop
-      // on its own, but a starter is copy-paste source: whoever swaps in
-      // another HTTP client inherits the header policy, not this one. Same
-      // setting the generated JavaScript SDK uses.
+      // Refuse a 3xx rather than trust the HTTP client to strip the key on
+      // a cross-origin hop. The generated JavaScript SDK does the same.
       redirect: "error",
     });
     body = await response.text();
   } catch (cause) {
     if (isUnexpectedRedirect(cause)) {
       throw new ProductApiError(
-        "GET /v1/llms.txt was redirected, so the key was not sent on. " +
+        "GET /v1/operations was redirected, so the key was not sent on. " +
           "Set HYPERSCALE_BASE_URL to the origin the API answers on; " +
           "the usual cause is http:// where it serves https://.",
       );
@@ -116,21 +108,16 @@ export async function fetchProductDescriptor(
   if (!response.ok) {
     const detail = errorEnvelope(body) ?? body.trim();
     throw new ProductApiError(
-      `GET /v1/llms.txt failed: HTTP ${response.status}${detail === "" ? "" : ` - ${detail}`}`,
+      `GET /v1/operations failed: HTTP ${response.status}${detail === "" ? "" : ` - ${detail}`}`,
     );
   }
-  return parseProductDescriptor(body);
+  return parseOperationPage(body);
 }
 
 /**
  * Node reports a refused redirect as `TypeError: fetch failed` wrapping
- * `Error: unexpected redirect`.
- *
- * These strings are undici's, not a standard, so this match is COSMETIC and
- * never load-bearing: `redirect: "error"` refuses the hop whatever the
- * runtime calls it, and a reworded error just falls through to the generic
- * "Could not reach" line below. Losing the specific message is the right
- * direction to fail in, so this needs no upkeep.
+ * `Error: unexpected redirect`. The strings are undici's, so the match is
+ * cosmetic: a reworded error falls through to the generic message.
  */
 function isUnexpectedRedirect(cause: unknown): boolean {
   return (
@@ -141,40 +128,52 @@ function isUnexpectedRedirect(cause: unknown): boolean {
   );
 }
 
-const titleLine = /^# (.+)$/m;
-const declaredCount = /^## Operations \((\d+)\)$/m;
-const operationLine = /^- ([A-Z]+) (\S+) · .+ \((\S+); idempotency \S+\)$/gm;
-
 /**
- * The descriptor is text, so this reads it with three anchored patterns rather
- * than guessing. Parsing fewer operations than the document declares means the
- * format moved under us, and that has to fail loudly: a starter that silently
- * printed a short list would look like a Product missing half its surface.
+ * Refuses anything that is not an operation list, and any item without an id
+ * or a name. A starter that printed blank rows would hide the format moving
+ * under it.
  */
-export function parseProductDescriptor(document: string): ProductDescriptor {
-  const title = titleLine.exec(document)?.[1]?.trim();
-  const declared = declaredCount.exec(document)?.[1];
-  if (!title || declared === undefined) {
+export function parseOperationPage(body: string): OperationPage {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    parsed = undefined;
+  }
+  const page = parsed as { items?: unknown; nextCursor?: unknown } | undefined;
+  if (typeof page !== "object" || page === null || !Array.isArray(page.items)) {
     throw new ProductApiError(
-      "The response is not a product descriptor. Check HYPERSCALE_BASE_URL points at the API origin.",
+      "The response is not an operation list. Check HYPERSCALE_BASE_URL points at the API origin.",
     );
   }
 
-  const operations: Operation[] = [];
-  for (const match of document.matchAll(operationLine)) {
-    const [, method, path, operationId] = match;
-    if (!method || !path || !operationId) continue;
-    operations.push({ method, path, operationId });
-  }
+  const operations = page.items.map((item: unknown): Operation => {
+    const { operationId, name, status } = (item ?? {}) as {
+      operationId?: unknown;
+      name?: unknown;
+      status?: unknown;
+    };
+    if (
+      typeof operationId !== "string" ||
+      operationId === "" ||
+      typeof name !== "string" ||
+      name === ""
+    ) {
+      throw new ProductApiError(
+        "An operation arrived without an id or a name; this starter is out of date.",
+      );
+    }
+    return {
+      operationId,
+      name,
+      status: typeof status === "string" ? status : "",
+    };
+  });
 
-  const expected = Number(declared);
-  if (operations.length !== expected) {
-    throw new ProductApiError(
-      `The descriptor declares ${expected} operations but ${operations.length} parsed; this starter is out of date.`,
-    );
-  }
-
-  return { title, operations };
+  return {
+    operations,
+    hasMore: typeof page.nextCursor === "string" && page.nextCursor !== "",
+  };
 }
 
 /** The API's error shape: `{"error":{"code","message"},"requestId"}`. */

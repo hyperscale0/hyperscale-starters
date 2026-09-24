@@ -5,12 +5,14 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from client import (
+    OPERATIONS_PATH,
+    Operation,
     ProductApiError,
-    fetch_product_descriptor,
-    parse_product_descriptor,
+    list_operations,
+    parse_operation_page,
     read_config,
 )
-from mock_server import SAMPLE_DESCRIPTOR, MockServer
+from mock_server import MockServer
 
 API_KEY = "sk_sandbox_example"
 
@@ -66,26 +68,26 @@ class SmokeTest(unittest.TestCase):
         environment_variables.update(overrides)
         return read_config(environment_variables)
 
-    def test_sends_the_key_and_the_environment_and_parses_the_descriptor(self) -> None:
-        product = fetch_product_descriptor(self.config())
+    def test_sends_the_key_and_the_environment_and_parses_the_operations(self) -> None:
+        page = list_operations(self.config())
 
-        self.assertEqual(product.title, "Example Product")
         self.assertEqual(
-            [(op.method, op.path, op.operation_id) for op in product.operations],
+            list(page.operations),
             [
-                ("GET", "/v1/accounts", "account_list"),
-                ("POST", "/v1/accounts", "account_create"),
+                Operation("ops_sandbox_example01", "customer.create", "succeeded"),
+                Operation("ops_sandbox_example02", "account.create", "failed"),
             ],
         )
+        self.assertTrue(page.has_more)
 
         request = self.server.received[-1]
-        self.assertEqual(request.path, "/v1/llms.txt")
+        self.assertEqual(request.path, OPERATIONS_PATH)
         self.assertEqual(request.authorization, "Bearer {}".format(API_KEY))
         self.assertEqual(request.environment, "sandbox")
-        self.assertEqual(request.accept, "text/plain")
+        self.assertEqual(request.accept, "application/json")
 
     def test_the_live_plane_is_addressed_by_the_header(self) -> None:
-        fetch_product_descriptor(self.config(HYPERSCALE_ENVIRONMENT="live"))
+        list_operations(self.config(HYPERSCALE_ENVIRONMENT="live"))
 
         self.assertEqual(self.server.received[-1].environment, "live")
 
@@ -93,7 +95,7 @@ class SmokeTest(unittest.TestCase):
         config = self.config(HYPERSCALE_API_KEY="sk_sandbox_wrong")
 
         with self.assertRaises(ProductApiError) as caught:
-            fetch_product_descriptor(config)
+            list_operations(config)
 
         self.assertIn("HTTP 401", str(caught.exception))
         self.assertIn("invalid_credentials", str(caught.exception))
@@ -103,9 +105,9 @@ class SmokeTest(unittest.TestCase):
             HYPERSCALE_BASE_URL="{}///".format(self.server.base_url)
         )
 
-        fetch_product_descriptor(config)
+        list_operations(config)
 
-        self.assertEqual(self.server.received[-1].path, "/v1/llms.txt")
+        self.assertEqual(self.server.received[-1].path, OPERATIONS_PATH)
 
 
 class RedirectTest(unittest.TestCase):
@@ -118,13 +120,13 @@ class RedirectTest(unittest.TestCase):
         elsewhere = MockServer(api_key=API_KEY)
         elsewhere.start()
         self.addCleanup(elsewhere.stop)
-        redirector = RedirectingServer("{}/v1/llms.txt".format(elsewhere.base_url))
+        redirector = RedirectingServer(elsewhere.base_url + OPERATIONS_PATH)
         redirector.start()
         self.addCleanup(redirector.stop)
 
         # The destination is live and does log what reaches it, so the empty
         # log below means the request was never made rather than missed.
-        fetch_product_descriptor(
+        list_operations(
             read_config(
                 {
                     "HYPERSCALE_API_KEY": API_KEY,
@@ -142,7 +144,7 @@ class RedirectTest(unittest.TestCase):
             }
         )
         with self.assertRaises(ProductApiError) as caught:
-            fetch_product_descriptor(redirected)
+            list_operations(redirected)
 
         self.assertIn("redirected", str(caught.exception))
         self.assertIn("HYPERSCALE_BASE_URL", str(caught.exception))
@@ -167,13 +169,20 @@ class ConfigTest(unittest.TestCase):
 
 
 class ParseTest(unittest.TestCase):
-    def test_a_count_that_disagrees_with_the_lines_is_refused(self) -> None:
-        short = SAMPLE_DESCRIPTOR.replace("## Operations (2)", "## Operations (3)")
+    def test_a_response_that_is_not_an_operation_list_is_refused(self) -> None:
+        for body in (
+            "# Example Product",
+            '{"error": "none"}',
+            '{"items": [{"name": "customer.create"}]}',
+        ):
+            with self.assertRaises(ProductApiError):
+                parse_operation_page(body)
 
-        with self.assertRaises(ProductApiError) as caught:
-            parse_product_descriptor(short)
+    def test_an_empty_page_is_still_a_page(self) -> None:
+        page = parse_operation_page('{"items": []}')
 
-        self.assertIn("declares 3 operations but 2 parsed", str(caught.exception))
+        self.assertEqual(list(page.operations), [])
+        self.assertFalse(page.has_more)
 
 
 if __name__ == "__main__":

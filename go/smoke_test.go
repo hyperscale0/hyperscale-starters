@@ -24,7 +24,7 @@ func environment(baseURL string, overrides map[string]string) func(string) strin
 }
 
 func TestSmokeCallSendsTheKeyAndTheEnvironment(t *testing.T) {
-	mock := startMockServer(apiKey, sampleDescriptor)
+	mock := startMockServer(apiKey, sampleOperations)
 	defer mock.Close()
 
 	config, err := ReadConfig(environment(mock.URL, nil))
@@ -32,30 +32,30 @@ func TestSmokeCallSendsTheKeyAndTheEnvironment(t *testing.T) {
 		t.Fatalf("ReadConfig: %v", err)
 	}
 
-	product, err := FetchProductDescriptor(config)
+	page, err := ListOperations(config)
 	if err != nil {
-		t.Fatalf("FetchProductDescriptor: %v", err)
+		t.Fatalf("ListOperations: %v", err)
 	}
 
-	if product.Title != "Example Product" {
-		t.Errorf("title = %q, want %q", product.Title, "Example Product")
-	}
 	want := []Operation{
-		{Method: "GET", Path: "/v1/accounts", OperationID: "account_list"},
-		{Method: "POST", Path: "/v1/accounts", OperationID: "account_create"},
+		{OperationID: "ops_sandbox_example01", Name: "customer.create", Status: "succeeded"},
+		{OperationID: "ops_sandbox_example02", Name: "account.create", Status: "failed"},
 	}
-	if len(product.Operations) != len(want) {
-		t.Fatalf("parsed %d operations, want %d", len(product.Operations), len(want))
+	if len(page.Operations) != len(want) {
+		t.Fatalf("parsed %d operations, want %d", len(page.Operations), len(want))
 	}
-	for index, operation := range product.Operations {
+	for index, operation := range page.Operations {
 		if operation != want[index] {
 			t.Errorf("operation %d = %+v, want %+v", index, operation, want[index])
 		}
 	}
+	if !page.HasMore {
+		t.Error("a page with a next cursor reported no more")
+	}
 
 	request := mock.last()
-	if request.Path != "/v1/llms.txt" {
-		t.Errorf("path = %q, want %q", request.Path, "/v1/llms.txt")
+	if request.URL != operationsPath {
+		t.Errorf("url = %q, want %q", request.URL, operationsPath)
 	}
 	if request.Authorization != "Bearer "+apiKey {
 		t.Errorf("authorization = %q", request.Authorization)
@@ -63,13 +63,13 @@ func TestSmokeCallSendsTheKeyAndTheEnvironment(t *testing.T) {
 	if request.Environment != "sandbox" {
 		t.Errorf("environment header = %q, want sandbox", request.Environment)
 	}
-	if request.Accept != "text/plain" {
-		t.Errorf("accept = %q, want text/plain", request.Accept)
+	if request.Accept != "application/json" {
+		t.Errorf("accept = %q, want application/json", request.Accept)
 	}
 }
 
 func TestLivePlaneIsAddressedByTheHeader(t *testing.T) {
-	mock := startMockServer(apiKey, sampleDescriptor)
+	mock := startMockServer(apiKey, sampleOperations)
 	defer mock.Close()
 
 	config, err := ReadConfig(environment(mock.URL, map[string]string{
@@ -78,8 +78,8 @@ func TestLivePlaneIsAddressedByTheHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadConfig: %v", err)
 	}
-	if _, err := FetchProductDescriptor(config); err != nil {
-		t.Fatalf("FetchProductDescriptor: %v", err)
+	if _, err := ListOperations(config); err != nil {
+		t.Fatalf("ListOperations: %v", err)
 	}
 
 	if got := mock.last().Environment; got != "live" {
@@ -88,7 +88,7 @@ func TestLivePlaneIsAddressedByTheHeader(t *testing.T) {
 }
 
 func TestRefusedKeySurfacesTheErrorCode(t *testing.T) {
-	mock := startMockServer(apiKey, sampleDescriptor)
+	mock := startMockServer(apiKey, sampleOperations)
 	defer mock.Close()
 
 	config, err := ReadConfig(environment(mock.URL, map[string]string{
@@ -98,7 +98,7 @@ func TestRefusedKeySurfacesTheErrorCode(t *testing.T) {
 		t.Fatalf("ReadConfig: %v", err)
 	}
 
-	_, err = FetchProductDescriptor(config)
+	_, err = ListOperations(config)
 	if err == nil {
 		t.Fatal("a wrong key was accepted")
 	}
@@ -109,19 +109,19 @@ func TestRefusedKeySurfacesTheErrorCode(t *testing.T) {
 }
 
 func TestTrailingSlashDoesNotDoubleUpThePath(t *testing.T) {
-	mock := startMockServer(apiKey, sampleDescriptor)
+	mock := startMockServer(apiKey, sampleOperations)
 	defer mock.Close()
 
 	config, err := ReadConfig(environment(mock.URL+"///", nil))
 	if err != nil {
 		t.Fatalf("ReadConfig: %v", err)
 	}
-	if _, err := FetchProductDescriptor(config); err != nil {
-		t.Fatalf("FetchProductDescriptor: %v", err)
+	if _, err := ListOperations(config); err != nil {
+		t.Fatalf("ListOperations: %v", err)
 	}
 
-	if got := mock.last().Path; got != "/v1/llms.txt" {
-		t.Errorf("path = %q, want /v1/llms.txt", got)
+	if got := mock.last().URL; got != operationsPath {
+		t.Errorf("url = %q, want %q", got, operationsPath)
 	}
 }
 
@@ -154,15 +154,19 @@ func TestConfigDefaultsAndRefusals(t *testing.T) {
 	}
 }
 
-func TestCountThatDisagreesWithTheLinesIsRefused(t *testing.T) {
-	short := strings.Replace(sampleDescriptor, "## Operations (2)", "## Operations (3)", 1)
-
-	_, err := ParseProductDescriptor(short)
-	if err == nil {
-		t.Fatal("a descriptor with a wrong count was accepted")
+func TestResponseThatIsNotAnOperationListIsRefused(t *testing.T) {
+	for _, body := range []string{"# Example Product", `{"error":"none"}`, `{"items":[{"name":"customer.create"}]}`} {
+		if _, err := ParseOperationPage([]byte(body)); err == nil {
+			t.Errorf("accepted %s", body)
+		}
 	}
-	if !strings.Contains(err.Error(), "declares 3 operations but 2 parsed") {
-		t.Errorf("error = %q", err.Error())
+
+	page, err := ParseOperationPage([]byte(`{"items":[]}`))
+	if err != nil {
+		t.Fatalf("an empty page was refused: %v", err)
+	}
+	if len(page.Operations) != 0 || page.HasMore {
+		t.Errorf("empty page = %+v", page)
 	}
 }
 
@@ -183,8 +187,8 @@ func startCollector() *collector {
 			destination.mutex.Lock()
 			destination.seen = append(destination.seen, request.Header.Get("Authorization"))
 			destination.mutex.Unlock()
-			writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			_, _ = writer.Write([]byte(sampleDescriptor))
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = writer.Write([]byte(sampleOperations))
 		}))
 	return destination
 }
@@ -207,7 +211,7 @@ func TestRedirectDoesNotCarryTheKeyToAnotherOrigin(t *testing.T) {
 
 	redirector := httptest.NewServer(http.HandlerFunc(
 		func(writer http.ResponseWriter, request *http.Request) {
-			http.Redirect(writer, request, elsewhere.URL+"/v1/llms.txt", http.StatusFound)
+			http.Redirect(writer, request, elsewhere.URL+operationsPath, http.StatusFound)
 		}))
 	defer redirector.Close()
 
@@ -218,8 +222,8 @@ func TestRedirectDoesNotCarryTheKeyToAnotherOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadConfig: %v", err)
 	}
-	if _, err := FetchProductDescriptor(direct); err != nil {
-		t.Fatalf("FetchProductDescriptor against the destination: %v", err)
+	if _, err := ListOperations(direct); err != nil {
+		t.Fatalf("ListOperations against the destination: %v", err)
 	}
 	if got := elsewhere.count(); got != 1 {
 		t.Fatalf("destination recorded %d requests, want 1", got)
@@ -230,7 +234,7 @@ func TestRedirectDoesNotCarryTheKeyToAnotherOrigin(t *testing.T) {
 		t.Fatalf("ReadConfig: %v", err)
 	}
 
-	_, err = FetchProductDescriptor(config)
+	_, err = ListOperations(config)
 	if err == nil {
 		t.Fatal("a redirect away from the configured origin was followed")
 	}
