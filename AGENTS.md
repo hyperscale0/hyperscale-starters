@@ -1,10 +1,5 @@
 # starters
 
-Read the [provider boundary](../PRINCIPLES.md#hyperscale-never-originates) and
-[Kubernetes model](../PRINCIPLES.md#the-kubernetes-model)
-before changing this tree. Provider decisions and custody stay with providers;
-all clients use the operation API.
-
 Three hand-written example apps, one per language, that call a Hyperscale
 Product API over plain HTTP. They exist to be read and copied; nothing depends
 on them.
