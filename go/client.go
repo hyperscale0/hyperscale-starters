@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -59,6 +60,20 @@ func errorf(format string, args ...any) error {
 	return &ProductAPIError{Message: fmt.Sprintf(format, args...)}
 }
 
+func apiOrigin(value string) (string, error) {
+	origin, err := url.Parse(value)
+	if err == nil {
+		host := origin.Hostname()
+		loopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
+		if (origin.Scheme == "https" || (origin.Scheme == "http" && loopback)) &&
+			host != "" && origin.User == nil && (origin.Path == "" || origin.Path == "/") &&
+			origin.RawQuery == "" && origin.Fragment == "" && !origin.ForceQuery {
+			return strings.TrimRight(value, "/"), nil
+		}
+	}
+	return "", errorf("HYPERSCALE_BASE_URL must be an HTTPS origin; HTTP is allowed only on loopback.")
+}
+
 // ReadConfig reads the three environment variables through the lookup a caller
 // hands it, so a test never has to mutate the process environment.
 func ReadConfig(lookup func(string) string) (Config, error) {
@@ -82,6 +97,10 @@ func ReadConfig(lookup func(string) string) (Config, error) {
 	}
 	// A trailing slash would make every path double up on one.
 	baseURL = strings.TrimRight(baseURL, "/")
+	baseURL, err := apiOrigin(baseURL)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{APIKey: apiKey, BaseURL: baseURL, Environment: environment}, nil
 }
@@ -91,7 +110,11 @@ func ReadConfig(lookup func(string) string) (Config, error) {
 // Product. A fresh Product has run nothing yet, so an empty list with HTTP 200
 // still proves the key.
 func ListOperations(config Config) (OperationPage, error) {
-	url := config.BaseURL + operationsPath
+	origin, err := apiOrigin(config.BaseURL)
+	if err != nil {
+		return OperationPage{}, err
+	}
+	url := origin + operationsPath
 
 	request, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {

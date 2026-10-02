@@ -91,3 +91,7 @@ against a local mock server.
 ---
 
 Hyperscale™ is a trademark of Hyperscale LLC. Code licenses do not grant rights to the name or marks.
+
+`HYPERSCALE_BASE_URL` must be an HTTPS origin. HTTP is allowed only for
+`localhost`, `127.0.0.1`, or `[::1]` during local development. The starters
+reject other cleartext origins before attaching an API key.

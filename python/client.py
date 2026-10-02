@@ -17,6 +17,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, List, Mapping, Optional, Sequence
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 #: The public origin. Override it with HYPERSCALE_BASE_URL.
@@ -75,6 +76,24 @@ class OperationPage:
     has_more: bool
 
 
+def _api_origin(value: str) -> str:
+    try:
+        url = urlsplit(value)
+        loopback = url.hostname in ("localhost", "127.0.0.1", "::1")
+        if (
+            (url.scheme != "https" and not (url.scheme == "http" and loopback))
+            or not url.hostname or url.username is not None or url.password is not None
+            or url.path not in ("", "/") or url.query or url.fragment
+        ):
+            raise ValueError()
+        url.port  # Reject invalid ports before constructing a credentialed request.
+    except ValueError:
+        raise ProductApiError(
+            "HYPERSCALE_BASE_URL must be an HTTPS origin; HTTP is allowed only on loopback."
+        ) from None
+    return value.rstrip("/")
+
+
 def read_config(environment_variables: Mapping[str, str]) -> Config:
     api_key = environment_variables.get("HYPERSCALE_API_KEY")
     if not api_key:
@@ -95,7 +114,7 @@ def read_config(environment_variables: Mapping[str, str]) -> Config:
         environment_variables.get("HYPERSCALE_BASE_URL") or DEFAULT_BASE_URL
     ).rstrip("/")
 
-    return Config(api_key=api_key, base_url=base_url, environment=environment)
+    return Config(api_key=api_key, base_url=_api_origin(base_url), environment=environment)
 
 
 def list_operations(config: Config) -> OperationPage:
@@ -104,7 +123,7 @@ def list_operations(config: Config) -> OperationPage:
     The capability that serves it is part of every Product. A fresh Product has
     run nothing yet, so an empty list with HTTP 200 still proves the key.
     """
-    url = "{}{}".format(config.base_url, OPERATIONS_PATH)
+    url = "{}{}".format(_api_origin(config.base_url), OPERATIONS_PATH)
     request = Request(
         url,
         headers={

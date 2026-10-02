@@ -42,6 +42,31 @@ export interface OperationPage {
 /** A failure the person running this can fix, printed without a stack. */
 export class ProductApiError extends Error {}
 
+function apiOrigin(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ProductApiError(
+      "HYPERSCALE_BASE_URL must be an HTTPS origin; HTTP is allowed only on loopback.",
+    );
+  }
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (
+    (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new ProductApiError(
+      "HYPERSCALE_BASE_URL must be an HTTPS origin; HTTP is allowed only on loopback.",
+    );
+  }
+  return url.origin;
+}
+
 export function readConfig(
   environmentVariables: Record<string, string | undefined>,
 ): Config {
@@ -64,7 +89,7 @@ export function readConfig(
     environmentVariables.HYPERSCALE_BASE_URL ?? DEFAULT_BASE_URL
   ).replace(/\/+$/, "");
 
-  return { apiKey, baseUrl, environment };
+  return { apiKey, baseUrl: apiOrigin(baseUrl), environment };
 }
 
 /**
@@ -74,7 +99,7 @@ export function readConfig(
  * the key.
  */
 export async function listOperations(config: Config): Promise<OperationPage> {
-  const url = `${config.baseUrl}${OPERATIONS_PATH}`;
+  const url = `${apiOrigin(config.baseUrl)}${OPERATIONS_PATH}`;
 
   let response: Response;
   let body: string;
