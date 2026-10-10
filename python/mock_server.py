@@ -28,7 +28,7 @@ SAMPLE_OPERATIONS = json.dumps(
                 "tenantId": "ten_sandbox_example01",
                 "name": "account.create",
                 "status": "failed",
-                "errorCode": "validation_failed",
+                "errorCode": "invalid_request",
                 "errorMessage": "currency is required",
                 "createdAt": "2026-09-25T09:01:00.000Z",
             },

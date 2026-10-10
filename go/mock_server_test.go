@@ -13,7 +13,7 @@ const sampleOperations = `{"items":[` +
 	`{"operationId":"ops_sandbox_example01","tenantId":"ten_sandbox_example01",` +
 	`"name":"customer.create","status":"succeeded","createdAt":"2026-09-25T09:00:00.000Z"},` +
 	`{"operationId":"ops_sandbox_example02","tenantId":"ten_sandbox_example01",` +
-	`"name":"account.create","status":"failed","errorCode":"validation_failed",` +
+	`"name":"account.create","status":"failed","errorCode":"invalid_request",` +
 	`"errorMessage":"currency is required","createdAt":"2026-09-25T09:01:00.000Z"}` +
 	`],"nextCursor":"cursor_example","statusCounts":{"failed":1,"succeeded":1}}`
 
