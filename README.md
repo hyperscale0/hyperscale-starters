@@ -59,7 +59,7 @@ API's error code.
 
 ## Continue with object discovery
 
-Read [Product objects and actions](https://hyperscale0.ai/docs) for runtime
+Read [Product runtime](https://hyperscale0.ai/docs/runtime.md) for runtime
 discovery and execution. The shared TypeScript client is `@hyperscale0/sdk`;
 Python and Go call the same HTTP routes. Discover object kinds and attached
 actions before submitting input, and keep the returned Build identity, digest,
